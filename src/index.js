@@ -494,6 +494,10 @@ function repeatWords(p) {
   }
   if (p.repeat === 'biweekly') return 'every other ' + names[new Date(p.start_date + 'T12:00:00Z').getUTCDay()];
   if (p.repeat === 'monthly') return 'every month';
+  if (p.repeat === 'monthly_nth') {
+    const r = p.weekly_days || {};
+    return `on the ${{ 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', '-1': 'last' }[r.nth]} ${names[r.day]} of every month`;
+  }
   if (p.repeat === 'yearly') return 'every year';
   return '';
 }

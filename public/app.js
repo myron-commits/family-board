@@ -1,4 +1,4 @@
-import { addDays, dow, fromISO, eventsOn, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js';
+import { addDays, dow, fromISO, eventsOn, nthRule, nthOf, NTH_WORDS, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js';
 
 // ================== state ==================
 const S = {
@@ -666,11 +666,18 @@ function wireTimePicker(root) {
 }
 
 // ---------- Event editor ----------
+function occursOnRule(body, iso) {
+  const d = fromISO(iso), r = body.weekly_days;
+  if (d.getUTCDay() !== r.day) return false;
+  if (r.nth === -1) return d.getUTCDate() + 7 > new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  return Math.ceil(d.getUTCDate() / 7) === r.nth;
+}
 function editEvent(ev, date) {
   const isNew = !ev;
   ev = ev || { title: '', start_date: date || today(), start_time: '', end_time: '', people: '[]', repeat: '', location: '', notes: '' };
   let sel = new Set(peopleOf(ev));
-  let wk = new Set(ev.weekly_days ? JSON.parse(ev.weekly_days) : []);
+  let wk = new Set(ev.repeat === 'weekly' && ev.weekly_days ? JSON.parse(ev.weekly_days) : []);
+  let nth = ev.repeat === 'monthly_nth' ? nthRule(ev) : nthOf(ev.start_date);
   const el = sheet(`<h2>${isNew ? 'New event' : 'Edit event'}</h2>
     <form data-form="event">
       <input class="field say-big" name="title" value="${esc(ev.title)}" placeholder="What's happening?" ${isNew ? 'autofocus' : ''} required>
@@ -683,13 +690,18 @@ function editEvent(ev, date) {
       </div>
       <div class="two">
         <div><label class="lab">Repeats</label><input type="hidden" name="repeat" value="${ev.repeat || ''}"><div class="repeat-chips">
-          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['yearly', 'Yearly']]
+          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['monthly_nth', 'Monthly on…'], ['yearly', 'Yearly']]
             .map(([v, l]) => `<button type="button" data-rep="${v}" aria-pressed="${(ev.repeat || '') === v}">${l}</button>`).join('')}</div></div>
         <div><label class="lab">Where</label><input class="field" name="location" value="${esc(ev.location || '')}" placeholder="Optional" style="width:100%"></div>
       </div>
       <div id="repopts" class="repopts" ${ev.repeat ? '' : 'hidden'}>
         <div id="wkdays" ${ev.repeat === 'weekly' ? '' : 'hidden'}><label class="lab">On these days</label>
           <div class="repeat-chips">${WD.map((d, i) => `<button type="button" data-wd="${i}" aria-pressed="${wk.has(i)}">${d}</button>`).join('')}</div></div>
+        <div id="nthopts" ${ev.repeat === 'monthly_nth' ? '' : 'hidden'}><label class="lab">Which week of the month</label>
+          <div class="repeat-chips">${[1, 2, 3, 4, -1].map((n) => `<button type="button" data-nth="${n}" aria-pressed="${nth.nth === n}">${n === -1 ? 'Last' : NTH_WORDS[n]}</button>`).join('')}</div>
+          <label class="lab">On which day</label>
+          <div class="repeat-chips">${WD.map((d, i) => `<button type="button" data-nday="${i}" aria-pressed="${nth.day === i}">${d}</button>`).join('')}</div>
+          <p id="nthsay" style="color:var(--slate);font-size:.82rem;margin:.45rem 0 0"></p></div>
         <label class="lab">Repeat until</label>
         <input type="hidden" name="until_mode" value="${ev.repeat_until ? 'date' : 'forever'}">
         <div class="repeat-chips"><button type="button" data-until="forever" aria-pressed="${!ev.repeat_until}">Forever</button><button type="button" data-until="date" aria-pressed="${!!ev.repeat_until}">Until a date</button></div>
@@ -707,6 +719,12 @@ function editEvent(ev, date) {
     if (p) { const id = +p.dataset.p; sel.has(id) ? sel.delete(id) : sel.add(id); p.setAttribute('aria-pressed', sel.has(id)); return; }
     const w = e.target.closest('[data-wd]');
     if (w) { const i = +w.dataset.wd; wk.has(i) ? wk.delete(i) : wk.add(i); w.setAttribute('aria-pressed', wk.has(i)); return; }
+    const nb = e.target.closest('[data-nth],[data-nday]');
+    if (nb) {
+      if (nb.dataset.nth) nth.nth = +nb.dataset.nth; else nth.day = +nb.dataset.nday;
+      drawNth();
+      return;
+    }
     const u = e.target.closest('[data-until]');
     if (u) {
       el.querySelector('[name=until_mode]').value = u.dataset.until;
@@ -722,6 +740,12 @@ function editEvent(ev, date) {
       closeSheet(); toast('Deleted'); load();
     }
   });
+  function drawNth() {
+    el.querySelectorAll('[data-nth]').forEach((x) => x.setAttribute('aria-pressed', +x.dataset.nth === nth.nth));
+    el.querySelectorAll('[data-nday]').forEach((x) => x.setAttribute('aria-pressed', +x.dataset.nday === nth.day));
+    el.querySelector('#nthsay').textContent = `Repeats the ${NTH_WORDS[nth.nth]} ${WDL[nth.day]} of every month.`;
+  }
+  drawNth();
   wireDatePicker(el.querySelector('[data-dp=start_date]'));
   wireDatePicker(el.querySelector('[data-dp=repeat_until]'));
   wireTimePicker(el.querySelector('.tp'));
@@ -731,6 +755,8 @@ function editEvent(ev, date) {
     el.querySelector('[name=repeat]').value = b.dataset.rep;
     el.querySelectorAll('[data-rep]').forEach((x) => x.setAttribute('aria-pressed', x === b));
     el.querySelector('#wkdays').hidden = b.dataset.rep !== 'weekly';
+    el.querySelector('#nthopts').hidden = b.dataset.rep !== 'monthly_nth';
+    if (b.dataset.rep === 'monthly_nth' && ev.repeat !== 'monthly_nth') { nth = nthOf(el.querySelector('[name=start_date]').value || today()); drawNth(); }
     el.querySelector('#repopts').hidden = !b.dataset.rep;
     if (b.dataset.rep === 'weekly' && !wk.size) {
       // start with the event's own weekday picked
@@ -745,9 +771,14 @@ function editEvent(ev, date) {
     const body = {
       title: f.title.trim(), start_date: f.start_date, start_time: f.start_time || null,
       end_time: f.start_time ? (f.end_time || null) : null, people: [...sel], repeat: f.repeat || null,
-      weekly_days: f.repeat === 'weekly' && wk.size ? [...wk].sort() : null, location: f.location || null, notes: f.notes || null,
+      weekly_days: f.repeat === 'weekly' && wk.size ? [...wk].sort() : f.repeat === 'monthly_nth' ? { nth: nth.nth, day: nth.day } : null, location: f.location || null, notes: f.notes || null,
       repeat_until: f.repeat && f.until_mode === 'date' && f.repeat_until ? f.repeat_until : null,
     };
+    if (body.repeat === 'monthly_nth') {
+      let d = body.start_date;
+      for (let i = 0; i < 40 && !occursOnRule(body, d); i++) d = addDays(d, 1);
+      body.start_date = d;
+    }
     if (body.repeat_until && body.repeat_until < body.start_date) return toast('The end date is before the first day');
     if (body.start_time && !body.end_time) { const [h, m] = body.start_time.split(':').map(Number); body.end_time = `${String(Math.min(23, h + 1)).padStart(2, '0')}:${String(m).padStart(2, '0')}`; }
     await api(isNew ? 'events' : `events/${ev.id}`, { method: isNew ? 'POST' : 'PUT', body });
@@ -1268,11 +1299,16 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', keepAwake);
 document.addEventListener('pointerdown', keepAwake, { once: false, passive: true });
 // Wall screen: go full screen on the first tap (browsers only allow it after a tap)
+// Android only allows this when a tap finishes (touchend/click), not when a finger first touches down.
 function goFullscreen() {
-  if (isPhone() || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
-  document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+  const de = document.documentElement;
+  if (isPhone() || document.fullscreenElement || document.webkitFullscreenElement) return;
+  const req = de.requestFullscreen || de.webkitRequestFullscreen;
+  if (!req) return;
+  try { const p = req.call(de, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch { /* not allowed */ }
 }
-document.addEventListener('pointerdown', goFullscreen, { passive: true });
+document.addEventListener('touchend', goFullscreen, { passive: true });
+document.addEventListener('click', goFullscreen, { passive: true });
 
 // ================== start ==================
 load().then(loadWeather);

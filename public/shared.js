@@ -43,10 +43,31 @@ export function occursOn(ev, iso) {
     }
     case 'biweekly': return diff % 14 === 0;
     case 'monthly': return d.getUTCDate() === s.getUTCDate();
+    case 'monthly_nth': {
+      // e.g. 2nd Tuesday or last Friday of every month. Stored as {"nth":2,"day":2}; nth -1 = last
+      const r = nthRule(ev);
+      if (d.getUTCDay() !== r.day) return false;
+      const date = d.getUTCDate();
+      if (r.nth === -1) return date + 7 > new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+      return Math.ceil(date / 7) === r.nth;
+    }
     case 'yearly': return d.getUTCDate() === s.getUTCDate() && d.getUTCMonth() === s.getUTCMonth();
     default: return iso === ev.start_date;
   }
 }
+
+// The week-of-month rule for a 'monthly_nth' event, falling back to the start date's own
+export function nthRule(ev) {
+  let r = ev.weekly_days;
+  try { if (typeof r === 'string') r = JSON.parse(r); } catch { r = null; }
+  if (r && !Array.isArray(r) && r.day != null && r.nth) return { nth: +r.nth, day: +r.day };
+  return nthOf(ev.start_date);
+}
+export function nthOf(iso) {
+  const d = fromISO(iso), n = Math.ceil(d.getUTCDate() / 7);
+  return { nth: n > 4 ? -1 : n, day: d.getUTCDay() };
+}
+export const NTH_WORDS = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', '-1': 'last' };
 
 export function eventsOn(events, iso) {
   return events

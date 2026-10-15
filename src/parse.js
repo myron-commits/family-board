@@ -178,10 +178,25 @@ function extractTime(text) {
 }
 
 // ---- repeats ----
+function nextNth(today, n, w) {
+  const t = new Date(today + 'T12:00:00Z');
+  for (let i = 0; i < 70; i++) {
+    const d = new Date(t.getTime() + i * 86400000);
+    if (d.getUTCDay() !== w) continue;
+    const dt = d.getUTCDate(), last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    if (n === -1 ? dt + 7 > last : Math.ceil(dt / 7) === n) return d.toISOString().slice(0, 10);
+  }
+  return today;
+}
 function extractRepeat(text, today) {
   let t = text;
   let repeat = null, days = null, date = null;
+  const ORD = '(first|1st|second|2nd|third|3rd|fourth|4th|last)';
+  const ordN = (w) => ({ first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, last: -1 })[w.toLowerCase()];
+  const nthRule = (n, w) => { repeat = 'monthly_nth'; days = { nth: n, day: w }; date = nextNth(today, n, w); };
   const rules = [
+    [new RegExp('\\b(?:on\\s+)?(?:the\\s+|every\\s+|each\\s+)?' + ORD + '\\s+' + wdRe + '\\s+(?:of\\s+)?(?:every|each|the|a)\\s+month\\b', 'i'), (m) => nthRule(ordN(m[1]), wdIndex(m[2]))],
+    [new RegExp('\\b(?:every|each)\\s+' + ORD + '\\s+' + wdRe + '\\b', 'i'), (m) => nthRule(ordN(m[1]), wdIndex(m[2]))],
     [/\bevery\s*day\b|\bdaily\b|\beach\s+day\b/i, () => { repeat = 'daily'; days = [0, 1, 2, 3, 4, 5, 6]; }],
     [/\b(?:every\s+)?weekdays?\b|\bmonday\s+(?:through|thru|to)\s+friday\b/i, () => { repeat = 'weekdays'; days = [1, 2, 3, 4, 5]; }],
     [/\bevery\s+weekend\b|\bon\s+weekends\b/i, () => { repeat = 'weekly'; days = [0, 6]; }],
@@ -351,7 +366,7 @@ export function parse(input, ctx) {
     rest = pp.rest;
     const rp = extractRepeat(rest, today);
     rest = rp.rest;
-    let one_time_date = null, days = rp.days;
+    let one_time_date = null, days = rp.repeat === 'monthly_nth' ? [rp.days.day] : rp.days;
     if (!rp.repeat) {
       const d = extractDate(rest, today);
       rest = d.rest;
@@ -410,7 +425,7 @@ export function parse(input, ctx) {
     people: pp.ids,
     location,
     repeat: rp.repeat,
-    weekly_days: rp.repeat === 'weekly' && rp.days && rp.days.length > 1 ? rp.days : null,
+    weekly_days: rp.repeat === 'monthly_nth' ? rp.days : rp.repeat === 'weekly' && rp.days && rp.days.length > 1 ? rp.days : null,
     guessed_date: !dt.date && !rp.date,
   };
 
