@@ -411,5 +411,9 @@ select.field { appearance: auto; }
 .link-steps { display: flex; flex-direction: column; gap: .5rem; margin: .4rem 0 .8rem; }
 .link-steps a.btn { text-decoration: none; color: inherit; }
 
+.md-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: .3rem; max-width: 24rem; }
+.md-grid button { min-height: 2.35rem; border-radius: var(--r-sm, 10px); border: 2px solid var(--line); font-weight: 700; font-size: .85rem; }
+.md-grid .md-last { grid-column: span 4; }
+.md-grid button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .repopts { margin-top: .4rem; padding: .7rem .8rem; background: var(--paper); border-radius: var(--r-md); }
 .repopts .lab:first-child { margin-top: 0; }

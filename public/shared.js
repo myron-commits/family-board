@@ -43,6 +43,11 @@ export function occursOn(ev, iso) {
     }
     case 'biweekly': return diff % 14 === 0;
     case 'monthly': return d.getUTCDate() === s.getUTCDate();
+    case 'semimonthly': {
+      // twice a month on set dates, e.g. {"dates":[1,15]}; -1 = last day; 31st in a short month = its last day
+      const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+      return semiDates(ev).some((x) => (x === -1 ? last : Math.min(x, last)) === d.getUTCDate());
+    }
     case 'bimonthly': {
       const months = (d.getUTCFullYear() - s.getUTCFullYear()) * 12 + d.getUTCMonth() - s.getUTCMonth();
       return months % 2 === 0 && d.getUTCDate() === s.getUTCDate();
@@ -59,6 +64,15 @@ export function occursOn(ev, iso) {
     default: return iso === ev.start_date;
   }
 }
+
+export function semiDates(ev) {
+  let r = ev.weekly_days;
+  try { if (typeof r === 'string') r = JSON.parse(r); } catch { r = null; }
+  if (r && Array.isArray(r.dates) && r.dates.length) return r.dates.map(Number);
+  const n = fromISO(ev.start_date).getUTCDate();
+  return [n, n <= 15 ? n + 15 : n - 15].sort((a, b) => a - b);
+}
+export const ordinal = (n) => n === -1 ? 'last day' : n + ([11, 12, 13].includes(n) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'));
 
 // The week-of-month rule for a 'monthly_nth' event, falling back to the start date's own
 export function nthRule(ev) {

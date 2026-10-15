@@ -178,6 +178,15 @@ function extractTime(text) {
 }
 
 // ---- repeats ----
+function nextSemi(today, dates) {
+  const t = new Date(today + 'T12:00:00Z');
+  for (let i = 0; i < 40; i++) {
+    const d = new Date(t.getTime() + i * 86400000);
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    if (dates.some((x) => (x === -1 ? last : Math.min(x, last)) === d.getUTCDate())) return d.toISOString().slice(0, 10);
+  }
+  return today;
+}
 function nextNth(today, n, w) {
   const t = new Date(today + 'T12:00:00Z');
   for (let i = 0; i < 70; i++) {
@@ -195,13 +204,20 @@ function extractRepeat(text, today) {
   const ordN = (w) => ({ first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, last: -1 })[w.toLowerCase()];
   const nthRule = (n, w) => { repeat = 'monthly_nth'; days = { nth: n, day: w }; date = nextNth(today, n, w); };
   const rules = [
+    [/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(?:,|and|&)\s*(?:the\s+)?(\d{1,2}(?:st|nd|rd|th)?|last(?:\s+day)?)(?:\s+day)?\s+of\s+(?:every|each|the|a)\s+month\b/i, (m) => {
+      const a = +m[1], b = /last/i.test(m[2]) ? -1 : parseInt(m[2], 10);
+      if (a < 1 || a > 31 || (b !== -1 && (b < 1 || b > 31))) return;
+      repeat = 'semimonthly'; days = { dates: [a, b].sort((x, y) => (x === -1 ? 99 : x) - (y === -1 ? 99 : y)) };
+      date = nextSemi(today, days.dates);
+    }],
+    [/\btwice\s+(?:a|per|each|every)\s+month\b|\bsemi-?monthly\b/i, () => { repeat = 'semimonthly'; days = { dates: [1, 15] }; date = nextSemi(today, [1, 15]); }],
     [new RegExp('\\b(?:on\\s+)?(?:the\\s+|every\\s+|each\\s+)?' + ORD + '\\s+' + wdRe + '\\s+(?:of\\s+)?(?:every|each|the|a)\\s+month\\b', 'i'), (m) => nthRule(ordN(m[1]), wdIndex(m[2]))],
     [new RegExp('\\b(?:every|each)\\s+' + ORD + '\\s+' + wdRe + '\\b', 'i'), (m) => nthRule(ordN(m[1]), wdIndex(m[2]))],
     [/\bevery\s*day\b|\bdaily\b|\beach\s+day\b/i, () => { repeat = 'daily'; days = [0, 1, 2, 3, 4, 5, 6]; }],
     [/\b(?:every\s+)?weekdays?\b|\bmonday\s+(?:through|thru|to)\s+friday\b/i, () => { repeat = 'weekdays'; days = [1, 2, 3, 4, 5]; }],
     [/\bevery\s+weekend\b|\bon\s+weekends\b/i, () => { repeat = 'weekly'; days = [0, 6]; }],
     [new RegExp('\\bevery\\s+other\\s+' + wdRe + '\\b', 'i'), (m) => { repeat = 'biweekly'; const w = wdIndex(m[1]); days = [w]; date = nextWeekday(today, w, false); }],
-    [new RegExp('\\b(?:every|each)\\s+' + wdRe + '(?:s)?(?:\\s*(?:,|and|&)\\s*' + wdRe + '(?:s)?)*', 'i'), (m) => {
+    [new RegExp('\\b(?:every|each)\\s+' + wdRe + '(?:s)?\\b(?:\\s*(?:,|and|&)\\s*' + wdRe + '(?:s)?\\b)*', 'i'), (m) => {
       const found = [...m[0].matchAll(new RegExp(wdRe, 'ig'))].map((x) => wdIndex(x[1]));
       days = [...new Set(found)].sort();
       repeat = 'weekly';
@@ -367,7 +383,7 @@ export function parse(input, ctx) {
     rest = pp.rest;
     const rp = extractRepeat(rest, today);
     rest = rp.rest;
-    let one_time_date = null, days = rp.repeat === 'monthly_nth' ? [rp.days.day] : rp.days;
+    let one_time_date = null, days = rp.repeat === 'monthly_nth' ? [rp.days.day] : rp.repeat === 'semimonthly' ? null : rp.days;
     if (!rp.repeat) {
       const d = extractDate(rest, today);
       rest = d.rest;
@@ -426,7 +442,7 @@ export function parse(input, ctx) {
     people: pp.ids,
     location,
     repeat: rp.repeat,
-    weekly_days: rp.repeat === 'monthly_nth' ? rp.days : rp.repeat === 'weekly' && rp.days && rp.days.length > 1 ? rp.days : null,
+    weekly_days: rp.repeat === 'monthly_nth' || rp.repeat === 'semimonthly' ? rp.days : rp.repeat === 'weekly' && rp.days && rp.days.length > 1 ? rp.days : null,
     guessed_date: !dt.date && !rp.date,
   };
 

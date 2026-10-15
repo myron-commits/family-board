@@ -494,6 +494,10 @@ function repeatWords(p) {
   }
   if (p.repeat === 'biweekly') return 'every other ' + names[new Date(p.start_date + 'T12:00:00Z').getUTCDay()];
   if (p.repeat === 'monthly') return 'every month';
+  if (p.repeat === 'semimonthly') {
+    const o = (n) => n === -1 ? 'last day' : n + ([11, 12, 13].includes(n) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'));
+    return `on the ${joinNames(((p.weekly_days || {}).dates || []).map(o))} of every month`;
+  }
   if (p.repeat === 'bimonthly') {
     const n = new Date(p.start_date + 'T12:00:00Z').getUTCDate();
     return `every other month on the ${n}${[11, 12, 13].includes(n) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th')}`;

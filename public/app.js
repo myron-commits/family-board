@@ -1,4 +1,4 @@
-import { addDays, dow, fromISO, eventsOn, nthRule, nthOf, NTH_WORDS, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js';
+import { addDays, dow, fromISO, eventsOn, occursOn, nthRule, nthOf, NTH_WORDS, semiDates, ordinal, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js';
 
 // ================== state ==================
 const S = {
@@ -666,18 +666,13 @@ function wireTimePicker(root) {
 }
 
 // ---------- Event editor ----------
-function occursOnRule(body, iso) {
-  const d = fromISO(iso), r = body.weekly_days;
-  if (d.getUTCDay() !== r.day) return false;
-  if (r.nth === -1) return d.getUTCDate() + 7 > new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  return Math.ceil(d.getUTCDate() / 7) === r.nth;
-}
 function editEvent(ev, date) {
   const isNew = !ev;
   ev = ev || { title: '', start_date: date || today(), start_time: '', end_time: '', people: '[]', repeat: '', location: '', notes: '' };
   let sel = new Set(peopleOf(ev));
   let wk = new Set(ev.repeat === 'weekly' && ev.weekly_days ? JSON.parse(ev.weekly_days) : []);
   let nth = ev.repeat === 'monthly_nth' ? nthRule(ev) : nthOf(ev.start_date);
+  let md = new Set(ev.repeat === 'semimonthly' ? semiDates(ev) : [1, 15]);
   const el = sheet(`<h2>${isNew ? 'New event' : 'Edit event'}</h2>
     <form data-form="event">
       <input class="field say-big" name="title" value="${esc(ev.title)}" placeholder="What's happening?" ${isNew ? 'autofocus' : ''} required>
@@ -690,7 +685,7 @@ function editEvent(ev, date) {
       </div>
       <div class="two">
         <div><label class="lab">Repeats</label><input type="hidden" name="repeat" value="${ev.repeat || ''}"><div class="repeat-chips">
-          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['bimonthly', 'Every 2 mos'], ['monthly_nth', 'Monthly on…'], ['yearly', 'Yearly']]
+          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['semimonthly', 'Twice a month'], ['bimonthly', 'Every 2 mos'], ['monthly_nth', 'Monthly on…'], ['yearly', 'Yearly']]
             .map(([v, l]) => `<button type="button" data-rep="${v}" aria-pressed="${(ev.repeat || '') === v}">${l}</button>`).join('')}</div></div>
         <div><label class="lab">Where</label><input class="field" name="location" value="${esc(ev.location || '')}" placeholder="Optional" style="width:100%"></div>
       </div>
@@ -702,6 +697,9 @@ function editEvent(ev, date) {
           <label class="lab">On which day</label>
           <div class="repeat-chips">${WD.map((d, i) => `<button type="button" data-nday="${i}" aria-pressed="${nth.day === i}">${d}</button>`).join('')}</div>
           <p id="nthsay" style="color:var(--slate);font-size:.82rem;margin:.45rem 0 0"></p></div>
+        <div id="mdopts" ${ev.repeat === 'semimonthly' ? '' : 'hidden'}><label class="lab">On these dates each month</label>
+          <div class="md-grid">${[...Array(31)].map((_, i) => `<button type="button" data-md="${i + 1}" aria-pressed="${md.has(i + 1)}">${i + 1}</button>`).join('')}<button type="button" data-md="-1" class="md-last" aria-pressed="${md.has(-1)}">Last day</button></div>
+          <p id="mdsay" style="color:var(--slate);font-size:.82rem;margin:.45rem 0 0"></p></div>
         <label class="lab">Repeat until</label>
         <input type="hidden" name="until_mode" value="${ev.repeat_until ? 'date' : 'forever'}">
         <div class="repeat-chips"><button type="button" data-until="forever" aria-pressed="${!ev.repeat_until}">Forever</button><button type="button" data-until="date" aria-pressed="${!!ev.repeat_until}">Until a date</button></div>
@@ -719,6 +717,8 @@ function editEvent(ev, date) {
     if (p) { const id = +p.dataset.p; sel.has(id) ? sel.delete(id) : sel.add(id); p.setAttribute('aria-pressed', sel.has(id)); return; }
     const w = e.target.closest('[data-wd]');
     if (w) { const i = +w.dataset.wd; wk.has(i) ? wk.delete(i) : wk.add(i); w.setAttribute('aria-pressed', wk.has(i)); return; }
+    const mb = e.target.closest('[data-md]');
+    if (mb) { const v = +mb.dataset.md; md.has(v) ? md.delete(v) : md.add(v); drawMd(); return; }
     const nb = e.target.closest('[data-nth],[data-nday]');
     if (nb) {
       if (nb.dataset.nth) nth.nth = +nb.dataset.nth; else nth.day = +nb.dataset.nday;
@@ -746,6 +746,12 @@ function editEvent(ev, date) {
     el.querySelector('#nthsay').textContent = `Repeats the ${NTH_WORDS[nth.nth]} ${WDL[nth.day]} of every month.`;
   }
   drawNth();
+  function drawMd() {
+    el.querySelectorAll('[data-md]').forEach((x) => x.setAttribute('aria-pressed', md.has(+x.dataset.md)));
+    const l = [...md].sort((a, b) => (a === -1 ? 99 : a) - (b === -1 ? 99 : b)).map(ordinal);
+    el.querySelector('#mdsay').textContent = l.length ? `Repeats on the ${l.length > 1 ? l.slice(0, -1).join(', ') + ' and ' + l.at(-1) : l[0]} of every month.` : 'Tap the dates it happens on.';
+  }
+  drawMd();
   wireDatePicker(el.querySelector('[data-dp=start_date]'));
   wireDatePicker(el.querySelector('[data-dp=repeat_until]'));
   wireTimePicker(el.querySelector('.tp'));
@@ -756,6 +762,7 @@ function editEvent(ev, date) {
     el.querySelectorAll('[data-rep]').forEach((x) => x.setAttribute('aria-pressed', x === b));
     el.querySelector('#wkdays').hidden = b.dataset.rep !== 'weekly';
     el.querySelector('#nthopts').hidden = b.dataset.rep !== 'monthly_nth';
+    el.querySelector('#mdopts').hidden = b.dataset.rep !== 'semimonthly';
     if (b.dataset.rep === 'monthly_nth' && ev.repeat !== 'monthly_nth') { nth = nthOf(el.querySelector('[name=start_date]').value || today()); drawNth(); }
     el.querySelector('#repopts').hidden = !b.dataset.rep;
     if (b.dataset.rep === 'weekly' && !wk.size) {
@@ -771,12 +778,14 @@ function editEvent(ev, date) {
     const body = {
       title: f.title.trim(), start_date: f.start_date, start_time: f.start_time || null,
       end_time: f.start_time ? (f.end_time || null) : null, people: [...sel], repeat: f.repeat || null,
-      weekly_days: f.repeat === 'weekly' && wk.size ? [...wk].sort() : f.repeat === 'monthly_nth' ? { nth: nth.nth, day: nth.day } : null, location: f.location || null, notes: f.notes || null,
+      weekly_days: f.repeat === 'weekly' && wk.size ? [...wk].sort() : f.repeat === 'monthly_nth' ? { nth: nth.nth, day: nth.day } : f.repeat === 'semimonthly' ? { dates: [...md].sort((a, b) => (a === -1 ? 99 : a) - (b === -1 ? 99 : b)) } : null, location: f.location || null, notes: f.notes || null,
       repeat_until: f.repeat && f.until_mode === 'date' && f.repeat_until ? f.repeat_until : null,
     };
-    if (body.repeat === 'monthly_nth') {
+    if (body.repeat === 'semimonthly' && !md.size) return toast('Pick at least one date');
+    if (body.repeat === 'monthly_nth' || body.repeat === 'semimonthly') {
+      // start on the first real occurrence on or after the chosen day
       let d = body.start_date;
-      for (let i = 0; i < 40 && !occursOnRule(body, d); i++) d = addDays(d, 1);
+      for (let i = 0; i < 40 && !occursOn({ ...body, skip_dates: [], repeat_until: null }, d); i++) d = addDays(d, 1);
       body.start_date = d;
     }
     if (body.repeat_until && body.repeat_until < body.start_date) return toast('The end date is before the first day');
