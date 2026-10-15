@@ -1059,32 +1059,54 @@ async function editPeople() {
 }
 
 // ---------- Photos upload ----------
+// Library photos on newer iPhones are huge (up to 48 megapixels, often HEIC). Safari can fail to
+// decode those through a plain <img>, so decode with createImageBitmap first (it can shrink while
+// decoding), fall back to <img>, then step the size and quality down until the upload fits.
 async function uploadPhotos(files) {
+  if (!files.length) return;
   let n = 0;
-  for (const f of files) {
+  const fails = [];
+  for (let i = 0; i < files.length; i++) {
+    if (files.length > 1) toast(`Uploading photo ${i + 1} of ${files.length}…`);
     try {
-      const data = await shrink(f, 1600, 0.82);
+      const data = await shrinkToFit(files[i]);
       await api('photos', { method: 'POST', body: { data } });
       n++;
-    } catch (e) { toast(e.message); }
+    } catch (e) { fails.push(e.message || 'Upload failed'); }
   }
-  if (n) toast(`Added ${n} photo${n > 1 ? 's' : ''}`);
+  if (n) toast(`Added ${n} photo${n > 1 ? 's' : ''}${fails.length ? ` · ${fails.length} didn't work` : ''}`);
+  else if (fails.length) toast(fails[0]);
   load();
 }
-function shrink(file, max, q) {
+async function decodePhoto(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch { /* fall back */ }
+    try { return await createImageBitmap(file); } catch { /* fall back */ }
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      const s = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(img.src);
-      resolve(c.toDataURL('image/jpeg', q));
-    };
-    img.onerror = () => reject(new Error("Couldn't read that photo"));
-    img.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that photo. Try a different one, or take it with the camera.")); };
+    img.src = url;
   });
+}
+async function shrinkToFit(file) {
+  const img = await decodePhoto(file);
+  const w0 = img.width || img.naturalWidth, h0 = img.height || img.naturalHeight;
+  if (!w0 || !h0) throw new Error("Couldn't open that photo");
+  const LIMIT = 1_300_000; // server accepts up to ~1.4 MB of text per photo
+  for (const [max, q] of [[1600, 0.82], [1400, 0.75], [1200, 0.7], [1000, 0.65]]) {
+    const sc = Math.min(1, max / Math.max(w0, h0));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w0 * sc); c.height = Math.round(h0 * sc);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const data = c.toDataURL('image/jpeg', q);
+    c.width = c.height = 0; // free memory right away on iPhone
+    if (data.length > 100 && data.length <= LIMIT) { if (img.close) img.close(); return data; }
+  }
+  if (img.close) img.close();
+  throw new Error('That photo is too large to add');
 }
 
 // ================== events ==================
