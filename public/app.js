@@ -1,4 +1,4 @@
-import { addDays, dow, fromISO, eventsOn, occursOn, nthRule, nthOf, NTH_WORDS, semiDates, ordinal, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js';
+import { addDays, dow, fromISO, eventsOn, occursOn, nthRule, nthOf, NTH_WORDS, semiDates, ordinal, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js?v=20261015b';
 
 // ================== state ==================
 const S = {
@@ -130,6 +130,7 @@ function renderTop() {
     <div class="dateline">${WDL[dow(t)]}<span>${MON[fromISO(t).getUTCMonth()]} ${fromISO(t).getUTCDate()}, ${fromISO(t).getUTCFullYear()}</span></div>
     ${w ? `<div class="weather"><div class="wi">${w.icon}</div><div><b>${w.temp}°</b><span>${esc(w.text)} · ${w.hi}° / ${w.lo}°</span></div></div>` : ''}
     <div class="grow"></div>
+    ${!isPhone() && !isFull() ? `<button class="countdown-chip fs-btn" data-act="fullscreen" aria-label="Full screen"><span style="font-size:1.3rem">⛶</span><span class="lbl">Full screen</span></button>` : ''}
     ${cd ? `<button class="countdown-chip" data-act="countdowns"><span style="font-size:1.6rem">${cd.emoji || '🎉'}</span><span class="num">${daysBetween(t, cd.date)}</span><span class="lbl">days to<br>${esc(cd.title)}</span></button>` : `<button class="countdown-chip" data-act="countdowns"><span style="font-size:1.3rem">⏳</span><span class="lbl">Add a countdown</span></button>`}`;
 }
 
@@ -1211,6 +1212,7 @@ document.addEventListener('click', async (e) => {
     case 'saver-now': return startSaver();
     case 'edit-settings': return editSettings();
     case 'edit-people': return editPeople();
+    case 'fullscreen': goFullscreen(true); return;
     case 'copy-link': navigator.clipboard?.writeText(`${location.origin}/?key=${encodeURIComponent(S.key)}`).then(() => toast('Link copied')); return;
   }
 });
@@ -1331,15 +1333,22 @@ document.addEventListener('visibilitychange', keepAwake);
 document.addEventListener('pointerdown', keepAwake, { once: false, passive: true });
 // Wall screen: go full screen on the first tap (browsers only allow it after a tap)
 // Android only allows this when a tap finishes (touchend/click), not when a finger first touches down.
-function goFullscreen() {
+function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function goFullscreen(asked) {
   const de = document.documentElement;
-  if (isPhone() || document.fullscreenElement || document.webkitFullscreenElement) return;
-  const req = de.requestFullscreen || de.webkitRequestFullscreen;
-  if (!req) return;
-  try { const p = req.call(de, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch { /* not allowed */ }
+  if (isFull() || (isPhone() && asked !== true)) return;
+  const req = de.requestFullscreen || de.webkitRequestFullscreen || de.webkitRequestFullScreen;
+  const fail = () => { if (asked === true) toast("This browser won't allow full screen. Fully Kiosk Browser will."); };
+  if (!req) return fail();
+  try {
+    const p = req.call(de, { navigationUI: 'hide' });
+    if (p && p.then) p.then(() => renderTop(), fail); else setTimeout(() => (isFull() ? renderTop() : fail()), 400);
+  } catch { fail(); }
 }
-document.addEventListener('touchend', goFullscreen, { passive: true });
-document.addEventListener('click', goFullscreen, { passive: true });
+document.addEventListener('touchend', (e) => { if (!e.target.closest('[data-act=fullscreen]')) goFullscreen(); }, { passive: true });
+document.addEventListener('click', (e) => { if (!e.target.closest('[data-act=fullscreen]')) goFullscreen(); }, { passive: true });
+document.addEventListener('fullscreenchange', () => renderTop());
+document.addEventListener('webkitfullscreenchange', () => renderTop());
 
 // ================== start ==================
 load().then(loadWeather);
