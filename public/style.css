@@ -417,3 +417,14 @@ select.field { appearance: auto; }
 .md-grid button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .repopts { margin-top: .4rem; padding: .7rem .8rem; background: var(--paper); border-radius: var(--r-md); }
 .repopts .lab:first-child { margin-top: 0; }
+
+/* photo tray */
+.tray-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: .4rem; max-height: 50vh; overflow-y: auto; }
+.tray-grid figure { margin: 0; position: relative; aspect-ratio: 1; border-radius: var(--r-md); overflow: hidden; background: var(--soft); display: grid; place-items: center; font-size: 1.6rem; }
+.tray-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tray-grid .del { position: absolute; top: .25rem; right: .25rem; background: rgba(29, 36, 51, .7); color: #fff; border-radius: 999px; width: 1.8rem; height: 1.8rem; font-size: .9rem; }
+.tray-grid .tick { position: absolute; inset: auto .3rem .3rem auto; background: #2f9e57; color: #fff; border-radius: 999px; width: 1.6rem; height: 1.6rem; display: grid; place-items: center; font-size: .9rem; }
+.tray-grid .tick.bad { background: #d64545; }
+.tray-grid .tray-up img { opacity: .55; }
+.tray-bar { height: .5rem; background: var(--soft); border-radius: 999px; overflow: hidden; margin-top: .7rem; }
+.tray-bar > div { height: 100%; width: 0; background: var(--ink); transition: width .3s; }

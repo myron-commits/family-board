@@ -1,4 +1,4 @@
-import { addDays, dow, fromISO, eventsOn, occursOn, nthRule, nthOf, NTH_WORDS, semiDates, ordinal, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js?v=20261015b';
+import { addDays, dow, fromISO, eventsOn, occursOn, nthRule, nthOf, NTH_WORDS, semiDates, ordinal, choresOn, fmtTime, localNowHHMM, localToday, daysBetween } from './shared.js?v=20261015c';
 
 // ================== state ==================
 const S = {
@@ -459,7 +459,7 @@ VIEWS.meals = () => {
 // ---------- PHOTOS ----------
 VIEWS.photos = () => `
   <div class="cal-nav"><h2>Family photos</h2><div style="flex:1"></div>
-    <label class="btn ink">📷 Add photos<input type="file" accept="image/*" multiple hidden data-act="upload"></label>
+    <button class="btn ink" data-act="photo-tray">📷 Add photos</button>
     <button class="btn" data-act="saver-now">▶ Play slideshow</button></div>
   <p style="color:var(--slate);margin:0 0 .8rem">Photos play as a slideshow after ${esc(S.data.settings.photo_idle_minutes || 10)} minutes without a touch. Add them from your phone.</p>
   <div class="photos-grid">
@@ -1088,6 +1088,98 @@ async function uploadPhotos(files) {
   else if (fails.length) toast(fails[0]);
   load();
 }
+// ---- Photo tray: pick one or many (as many rounds as you like), preview, then upload one at a time ----
+let tray = null;
+function photoTray() {
+  tray = { files: [], busy: false };
+  const el = sheet(`<h2>Add photos</h2>
+    <p style="color:var(--slate);margin:0 0 .7rem">Pick one or several. You can tap <b>Choose photos</b> again to add more before uploading.</p>
+    <div class="tray-grid"><p class="empty" style="grid-column:1/-1">No photos picked yet.</p></div>
+    <div class="tray-bar" hidden><div></div></div>
+    <p class="tray-msg" style="color:var(--slate);font-size:.85rem;margin:.5rem 0 0"></p>
+    <div class="actions">
+      <label class="btn left">➕ Choose photos<input type="file" accept="image/*" multiple hidden data-act="tray-pick"></label>
+      <button type="button" class="btn" data-x>Close</button>
+      <button type="button" class="btn ink" data-go disabled>Upload</button>
+    </div>`);
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-x]')) { if (!tray.busy) { tray = null; closeSheet(); load(); } return; }
+    const rm = e.target.closest('[data-rm]');
+    if (rm && !tray.busy) { tray.files.splice(+rm.dataset.rm, 1); drawTray(); return; }
+    if (e.target.closest('[data-go]')) trayUpload();
+  });
+  tray.el = el;
+}
+async function trayAdd(files) {
+  if (!tray || tray.busy) return;
+  for (const f of files) {
+    const item = { file: f, thumb: '', state: 'ready' };
+    tray.files.push(item);
+    drawTray();
+    try { item.thumb = await shrinkTo(f, 220, 0.6); } catch { item.thumb = ''; }
+    drawTray();
+  }
+}
+function drawTray() {
+  if (!tray) return;
+  const g = tray.el.querySelector('.tray-grid');
+  g.innerHTML = tray.files.map((it, i) => `<figure class="tray-${it.state}">${it.thumb ? `<img src="${it.thumb}" alt="">` : '<span>📷</span>'}
+      ${it.state === 'done' ? '<b class="tick">✓</b>' : it.state === 'fail' ? '<b class="tick bad">!</b>' : it.state === 'up' ? '<b class="tick">…</b>' : `<button type="button" class="del" data-rm="${i}" aria-label="Remove">✕</button>`}</figure>`).join('')
+    || '<p class="empty" style="grid-column:1/-1">No photos picked yet.</p>';
+  const left = tray.files.filter((x) => x.state === 'ready' || x.state === 'fail').length;
+  const go = tray.el.querySelector('[data-go]');
+  go.disabled = tray.busy || !left;
+  go.textContent = tray.busy ? 'Uploading…' : left ? `Upload ${left} photo${left > 1 ? 's' : ''}` : 'Upload';
+}
+async function trayUpload() {
+  if (!tray || tray.busy) return;
+  const t = tray;
+  t.busy = true;
+  const todo = t.files.filter((x) => x.state === 'ready' || x.state === 'fail');
+  const bar = t.el.querySelector('.tray-bar'), msg = t.el.querySelector('.tray-msg');
+  bar.hidden = false;
+  let done = 0;
+  drawTray();
+  for (const it of todo) {
+    msg.textContent = `Uploading ${done + 1} of ${todo.length}… keep this screen open.`;
+    it.state = 'up'; drawTray();
+    let ok = false, why = '';
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      try {
+        const data = await shrinkToFit(it.file);
+        await api('photos', { method: 'POST', body: { data } });
+        ok = true;
+      } catch (e) { why = e.message || 'Upload failed'; await new Promise((r) => setTimeout(r, 800)); }
+    }
+    it.state = ok ? 'done' : 'fail';
+    it.why = why;
+    done++;
+    bar.firstElementChild.style.width = `${Math.round((done / todo.length) * 100)}%`;
+    drawTray();
+  }
+  t.busy = false;
+  const fails = todo.filter((x) => x.state === 'fail');
+  msg.textContent = fails.length
+    ? `Added ${todo.length - fails.length}. ${fails.length} didn't work (${fails[0].why}). Tap Upload to try those again, or ✕ them.`
+    : `All ${todo.length} added. They'll show in the slideshow.`;
+  fails.forEach((x) => (x.state = 'ready'));
+  t.files = t.files.filter((x) => x.state !== 'done');
+  drawTray();
+  if (!fails.length) toast(`Added ${todo.length} photo${todo.length > 1 ? 's' : ''}`);
+  load();
+}
+async function shrinkTo(file, max, q) {
+  const img = await decodePhoto(file);
+  const w0 = img.width || img.naturalWidth, h0 = img.height || img.naturalHeight;
+  const sc = Math.min(1, max / Math.max(w0, h0));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w0 * sc); c.height = Math.round(h0 * sc);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  const out = c.toDataURL('image/jpeg', q);
+  c.width = c.height = 0;
+  return out;
+}
 async function decodePhoto(file) {
   if (window.createImageBitmap) {
     try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch { /* fall back */ }
@@ -1213,11 +1305,13 @@ document.addEventListener('click', async (e) => {
     case 'edit-settings': return editSettings();
     case 'edit-people': return editPeople();
     case 'fullscreen': goFullscreen(true); return;
+    case 'photo-tray': photoTray(); return;
     case 'copy-link': navigator.clipboard?.writeText(`${location.origin}/?key=${encodeURIComponent(S.key)}`).then(() => toast('Link copied')); return;
   }
 });
 document.addEventListener('change', (e) => {
   if (e.target.matches('[data-act=upload]')) uploadPhotos([...e.target.files]);
+  if (e.target.matches('[data-act=tray-pick]')) { trayAdd([...e.target.files]); e.target.value = ''; }
 });
 document.addEventListener('submit', async (e) => {
   const f = e.target.closest('[data-form=add-item]');
