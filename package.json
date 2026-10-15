@@ -1,0 +1,15 @@
+{
+  "name": "family-board",
+  "version": "1.0.0",
+  "description": "Family wall calendar, chores, rewards, lists and meals with Siri quick-add",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.150.0"
+  },
+  "type": "module",
+  "private": true
+}
