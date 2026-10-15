@@ -209,6 +209,7 @@ function extractRepeat(text, today) {
     }],
     [/\bevery\s+week\b|\bweekly\b/i, () => { repeat = 'weekly'; }],
     [/\bevery\s+other\s+week\b|\bbiweekly\b/i, () => { repeat = 'biweekly'; }],
+    [/\bevery\s+(?:other|2|two|second)\s+months?\b|\bbi-?monthly\b/i, () => { repeat = 'bimonthly'; }],
     [/\bevery\s+month\b|\bmonthly\b/i, () => { repeat = 'monthly'; }],
     [/\bevery\s+year\b|\byearly\b|\bannually\b/i, () => { repeat = 'yearly'; }],
   ];

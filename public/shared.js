@@ -43,6 +43,10 @@ export function occursOn(ev, iso) {
     }
     case 'biweekly': return diff % 14 === 0;
     case 'monthly': return d.getUTCDate() === s.getUTCDate();
+    case 'bimonthly': {
+      const months = (d.getUTCFullYear() - s.getUTCFullYear()) * 12 + d.getUTCMonth() - s.getUTCMonth();
+      return months % 2 === 0 && d.getUTCDate() === s.getUTCDate();
+    }
     case 'monthly_nth': {
       // e.g. 2nd Tuesday or last Friday of every month. Stored as {"nth":2,"day":2}; nth -1 = last
       const r = nthRule(ev);

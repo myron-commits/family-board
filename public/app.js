@@ -690,7 +690,7 @@ function editEvent(ev, date) {
       </div>
       <div class="two">
         <div><label class="lab">Repeats</label><input type="hidden" name="repeat" value="${ev.repeat || ''}"><div class="repeat-chips">
-          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['monthly_nth', 'Monthly on…'], ['yearly', 'Yearly']]
+          ${[['', 'No'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly on…'], ['biweekly', 'Every 2 wks'], ['monthly', 'Monthly'], ['bimonthly', 'Every 2 mos'], ['monthly_nth', 'Monthly on…'], ['yearly', 'Yearly']]
             .map(([v, l]) => `<button type="button" data-rep="${v}" aria-pressed="${(ev.repeat || '') === v}">${l}</button>`).join('')}</div></div>
         <div><label class="lab">Where</label><input class="field" name="location" value="${esc(ev.location || '')}" placeholder="Optional" style="width:100%"></div>
       </div>
