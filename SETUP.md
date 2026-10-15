@@ -138,3 +138,9 @@ That's it. Every event, chore, point, and photo is already there, and Siri keeps
 - **Undo:** after a quick add, tap **Undo** if it misheard.
 - **Deleting a repeating event:** you can delete just that day or the whole series.
 - **Points for grown-ups:** chores assigned to Mom or Dad are a shared checklist and don't earn points.
+
+---
+
+## Updates
+
+The board's code lives in GitHub (myron-commits/family-board) and Cloudflare is connected to it. Any change saved to the `main` branch goes live automatically in 1–2 minutes. No laptop needed.
