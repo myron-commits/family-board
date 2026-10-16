@@ -145,7 +145,8 @@ VIEWS.today = () => {
   const chores = choresOn(S.data.chores, t);
   const lanes = S.data.people.map((p) => {
     const mine = evs.filter((e) => peopleOf(e).includes(p.id));
-    const myChores = chores.filter((c) => c.person_id === p.id);
+    const myBad = chores.filter((c) => c.person_id === p.id && isBad(c));
+    const myChores = chores.filter((c) => c.person_id === p.id && !isBad(c));
     const doneCount = myChores.filter((c) => isDone(c.id, t)).length;
     return `
       <div class="lane" style="${cv(p.color)}">
@@ -158,6 +159,7 @@ VIEWS.today = () => {
           ${mine.map((e) => evHTML(e, t, nowHM, p.id)).join('') || (myChores.length ? '' : '<div class="empty">Nothing today</div>')}
           ${myChores.length ? `<div class="lane-sub">Chores · ${doneCount} of ${myChores.length}</div>` + myChores.map((c) => choreHTML(c, t, p.color)).join('') : ''}
           ${myChores.length && doneCount === myChores.length ? `<div class="celebrate">All done! 🎉</div>` : ''}
+          ${behaviorHTML(myBad, t)}
         </div>
       </div>`;
   });
@@ -197,6 +199,17 @@ function evHTML(e, date, nowHM, laneId) {
   </button>`;
 }
 
+const isBad = (c) => (c.points || 0) < 0;
+function behaviorHTML(list, date) {
+  if (!list.length) return '';
+  return `<div class="lane-sub bad-sub">Behavior</div>` + list.map((c) => {
+    const hit = isDone(c.id, date);
+    return `<button class="chore bad ${hit ? 'done' : ''}" data-act="chore" data-id="${c.id}" data-date="${date}" aria-pressed="${hit}">
+      <span class="em">${c.emoji || '⚠️'}</span>
+      <span class="t">${esc(c.title)}<span class="p">${c.points} points${hit ? ' · taken today' : ''}</span></span>
+      <span class="tick">${hit ? '−' : ''}</span></button>`;
+  }).join('');
+}
 function choreHTML(c, date, color) {
   const done = isDone(c.id, date);
   return `<button class="chore ${done ? 'done' : ''}" style="${cv(color)}" data-act="chore" data-id="${c.id}" data-date="${date}" aria-pressed="${done}">
@@ -282,8 +295,9 @@ VIEWS.chores = () => {
     </div>
     <div class="lanes">
       ${S.data.people.map((p) => {
-        const mine = filtered.filter((c) => c.person_id === p.id);
-        const allMine = all.filter((c) => c.person_id === p.id);
+        const mine = filtered.filter((c) => c.person_id === p.id && !isBad(c));
+        const allMine = all.filter((c) => c.person_id === p.id && !isBad(c));
+        const myBad = all.filter((c) => c.person_id === p.id && isBad(c));
         const done = allMine.filter((c) => isDone(c.id, t)).length;
         const pct = allMine.length ? Math.round((done / allMine.length) * 100) : 0;
         return `<div class="lane" style="${cv(p.color)}">
@@ -294,8 +308,9 @@ VIEWS.chores = () => {
           </div>
           ${allMine.length ? `<div class="progress"><i style="width:${pct}%"></i></div>` : ''}
           <div class="lane-body">
-            ${mine.map((c) => choreHTML(c, t, p.color)).join('') || '<div class="empty">No chores here</div>'}
+            ${mine.map((c) => choreHTML(c, t, p.color)).join('') || (myBad.length ? '' : '<div class="empty">No chores here</div>')}
             ${allMine.length && done === allMine.length ? `<div class="celebrate">All done today! 🎉</div>` : ''}
+            ${behaviorHTML(myBad, t)}
           </div>
         </div>`;
       }).join('')}
@@ -854,7 +869,7 @@ async function manageChores() {
       ${S.data.people.map((p) => {
         const mine = S.data.chores.filter((c) => c.person_id === p.id);
         return `<div style="display:flex;align-items:center;gap:.5rem;margin-top:.6rem"><span class="face sm" style="${cv(p.color)}">${p.emoji}</span><b>${esc(p.name)}</b></div>` +
-          mine.map((c) => `<button class="chore" style="${cv(p.color)}" data-edit="${c.id}"><span class="em">${c.emoji || '⭐'}</span><span class="t">${esc(c.title)}<span class="p">${daysLabel(c)} · ${c.points} pts · ${c.time_of_day}</span></span><span>✎</span></button>`).join('');
+          mine.map((c) => `<button class="chore" style="${cv(p.color)}" data-edit="${c.id}"><span class="em">${c.emoji || '⭐'}</span><span class="t">${esc(c.title)}<span class="p">${isBad(c) ? 'behavior · ' + c.points + ' pts' : daysLabel(c) + ' · ' + c.points + ' pts · ' + c.time_of_day}</span></span><span>✎</span></button>`).join('');
       }).join('')}
     </div>
     <div class="actions"><button class="btn" data-x>Done</button><button class="btn ink" data-new>+ New chore</button></div>`);
@@ -884,13 +899,28 @@ function editChore(c) {
       <div class="who">${S.data.people.map((p) => `<button type="button" style="${cv(p.color)}" data-p="${p.id}" aria-pressed="${who === p.id}"><span class="face sm" style="${cv(p.color)}">${p.emoji}</span>${esc(p.name)}</button>`).join('')}</div>
       <label class="lab">Days</label>
       <div class="daypick">${WD.map((d, i) => `<button type="button" data-wd="${i}" aria-pressed="${days.has(i)}">${d[0]}</button>`).join('')}</div>
+      <label class="lab">Type</label>
+      <div class="repeat-chips"><button type="button" data-kind="good" aria-pressed="${!isBad(c)}">✅ Chore (earns points)</button><button type="button" data-kind="bad" aria-pressed="${isBad(c)}">⚠️ Behavior (loses points)</button></div>
       <div class="two">
-        <div><label class="lab">Points</label><input class="field" type="number" min="0" name="points" value="${c.points}" style="width:100%"></div>
+        <div><label class="lab" id="ptslab">${isBad(c) ? 'Points taken away' : 'Points earned'}</label><input class="field" type="number" min="0" name="points" value="${Math.abs(c.points || 0)}" style="width:100%"></div>
         <div><label class="lab">When</label><select class="field" name="time_of_day" style="width:100%">${['any', 'morning', 'afternoon', 'evening'].map((t) => `<option ${c.time_of_day === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       </div>
       <div class="actions">${isNew ? '' : '<button type="button" class="btn danger left" data-del>Remove chore</button>'}<button type="button" class="btn" data-x>Cancel</button><button class="btn ink">Save</button></div>
     </form>`);
+  let kind = isBad(c) ? 'bad' : 'good';
   el.addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-kind]');
+    if (k) {
+      kind = k.dataset.kind;
+      el.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', b === k));
+      el.querySelector('#ptslab').textContent = kind === 'bad' ? 'Points taken away' : 'Points earned';
+      if (kind === 'bad') { // behavior applies any day, any time
+        days = new Set([0, 1, 2, 3, 4, 5, 6]);
+        el.querySelectorAll('[data-wd]').forEach((b) => b.setAttribute('aria-pressed', 'true'));
+        if (el.querySelector('[name=emoji]').value === '⭐') el.querySelector('[name=emoji]').value = '⚠️';
+      }
+      return;
+    }
     const p = e.target.closest('[data-p]');
     if (p) { who = +p.dataset.p; el.querySelectorAll('[data-p]').forEach((b) => b.setAttribute('aria-pressed', +b.dataset.p === who)); return; }
     const w = e.target.closest('[data-wd]');
@@ -901,7 +931,7 @@ function editChore(c) {
   el.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
-    const body = { title: f.title.trim(), emoji: f.emoji, person_id: who, points: +f.points || 0, time_of_day: f.time_of_day, days: [...days].sort(), one_time_date: c.one_time_date || null };
+    const body = { title: f.title.trim(), emoji: f.emoji, person_id: who, points: (kind === 'bad' ? -1 : 1) * Math.abs(+f.points || 0), time_of_day: kind === 'bad' ? 'any' : f.time_of_day, days: [...days].sort(), one_time_date: c.one_time_date || null };
     await api(isNew ? 'chores' : `chores/${c.id}`, { method: isNew ? 'POST' : 'PUT', body });
     await load(); manageChores();
   });
@@ -1239,6 +1269,16 @@ document.addEventListener('click', async (e) => {
     case 'chore': {
       const wasDone = isDone(id, date);
       const c = S.data.chores.find((x) => x.id === id);
+      if (isBad(c)) {
+        const who = person(c.person_id);
+        const pin = await askPin(wasDone ? `Give back ${-c.points} points?` : `Take ${-c.points} points from ${who?.name || ''}?`);
+        if (!pin) return;
+        try {
+          await api(`chores/${id}/toggle`, { method: 'POST', body: { date, pin } });
+          toast(wasDone ? `Gave back ${-c.points} points` : `${c.points} for ${who?.name}: ${c.title}`);
+        } catch (err) { toast(err.message); }
+        return load();
+      }
       // optimistic update for snappy taps
       if (wasDone) S.data.done = S.data.done.filter((d) => !(d.chore_id === id && d.date === date));
       else S.data.done.push({ chore_id: id, date });
@@ -1248,7 +1288,7 @@ document.addEventListener('click', async (e) => {
       if (!wasDone) {
         document.querySelector(`[data-act=chore][data-id="${id}"]`)?.classList.add('pop');
         if (p?.is_kid) {
-          const left = choresOn(S.data.chores, date).filter((x) => x.person_id === p.id && !isDone(x.id, date)).length;
+          const left = choresOn(S.data.chores, date).filter((x) => x.person_id === p.id && !isBad(x) && !isDone(x.id, date)).length;
           if (!left) { confetti([p.emoji, '⭐', '🎉']); toast(`${p.name} finished every chore! 🎉`); }
           else if (c.points) toast(`+${c.points} for ${p.name} ⭐`);
         }

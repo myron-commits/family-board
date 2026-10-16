@@ -428,3 +428,11 @@ select.field { appearance: auto; }
 .tray-grid .tray-up img { opacity: .55; }
 .tray-bar { height: .5rem; background: var(--soft); border-radius: 999px; overflow: hidden; margin-top: .7rem; }
 .tray-bar > div { height: 100%; width: 0; background: var(--ink); transition: width .3s; }
+
+/* ---------- behavior (negative points) ---------- */
+.bad-sub { color: #b4472e; }
+.chore.bad { background: #fbeee9; }
+.chore.bad .tick { border-color: #e2a594; color: #fff; font-size: 1.4rem; }
+.chore.bad.done { background: #f6ddd5; }
+.chore.bad.done .t { text-decoration: none; color: #8a3520; }
+.chore.bad.done .tick { background: #b4472e; border-color: #b4472e; }

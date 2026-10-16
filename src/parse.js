@@ -282,6 +282,8 @@ function extractPeople(text, people) {
 }
 
 function extractPoints(text) {
+  const neg = text.match(/\b(?:minus|negative|lose|loses|take away|takes away)\s*(\d+)\s*(?:points?|pts|stars?)?|(?:^|\s)-\s*(\d+)\s*(?:points?|pts|stars?)\b/i);
+  if (neg) return { points: -Number(neg[1] || neg[2]), rest: text.replace(neg[0], ' ') };
   const m = text.match(/\b(?:for\s+|worth\s+)?(\d+|\w+)\s*(?:points?|pts|stars?)\b/i);
   if (!m) return { points: null, rest: text };
   const n = Number(m[1]) || NUMWORDS[m[1].toLowerCase()];

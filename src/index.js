@@ -221,14 +221,15 @@ async function route(request, env, url) {
       if (!chore) return bad('No such chore', 404);
       const done = await one(db, 'SELECT * FROM chore_done WHERE chore_id=? AND date=?', id, date);
       const who = b.person_id || chore.person_id;
+      if (chore.points < 0 && !(await checkPin(db, b.pin))) return bad('Parent PIN required', 403);
       if (done) {
         await run(db, 'DELETE FROM chore_done WHERE chore_id=? AND date=?', id, date);
         await run(db, 'DELETE FROM points_log WHERE chore_id=? AND chore_date=?', id, date);
         return json({ ok: true, done: false });
       }
       await run(db, 'INSERT INTO chore_done (chore_id, date, person_id) VALUES (?,?,?)', id, date, who);
-      if (who && chore.points > 0) {
-        await insert(db, 'points_log', { person_id: who, delta: chore.points, reason: chore.title, chore_id: chore.id, chore_date: date });
+      if (who && chore.points !== 0) {
+        await insert(db, 'points_log', { person_id: who, delta: chore.points, reason: chore.points < 0 ? `⚠️ ${chore.title}` : chore.title, chore_id: chore.id, chore_date: date });
       }
       return json({ ok: true, done: true, points: chore.points });
     }
@@ -433,14 +434,14 @@ async function say(db, text) {
       const targets = [p.person_id, ...(p.extra_people || [])];
       for (const pid of targets) {
         created.push(await insert(db, 'chores', {
-          title: p.title, person_id: pid, points: p.points, emoji: choreEmoji(p.title),
-          days: JSON.stringify(p.days), time_of_day: p.time_of_day, one_time_date: p.one_time_date,
+          title: p.title, person_id: pid, points: p.points, emoji: p.points < 0 ? '⚠️' : choreEmoji(p.title),
+          days: JSON.stringify(p.points < 0 ? [0, 1, 2, 3, 4, 5, 6] : p.days), time_of_day: p.points < 0 ? 'any' : p.time_of_day, one_time_date: p.points < 0 ? null : p.one_time_date,
         }));
       }
       const who = p.person_id ? ` for ${nameOf(targets.filter(Boolean))}` : '';
       const when = p.one_time_date ? ` ${onDate(p.one_time_date, t)}` : p.days.length === 7 ? ' every day' : ` on ${p.days.map((d) => ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][d]).join(', ')}`;
       const pts = p.points ? `, worth ${p.points} points` : '';
-      return { ok: true, kind: 'chore', undo: { type: 'chores', ids: created }, reply: `Added chore ${p.title}${who}${when}${pts}.` };
+      return { ok: true, kind: 'chore', undo: { type: 'chores', ids: created }, reply: p.points < 0 ? `Added behavior ${p.title}${who}: takes away ${-p.points} points.` : `Added chore ${p.title}${who}${when}${pts}.` };
     }
     case 'meal': {
       await run(db, 'INSERT INTO meals (date, slot, title) VALUES (?,?,?) ON CONFLICT(date, slot) DO UPDATE SET title=excluded.title', p.date, p.slot, p.title);
