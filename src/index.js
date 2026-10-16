@@ -497,7 +497,9 @@ function repeatWords(p) {
   if (p.repeat === 'monthly') return 'every month';
   if (p.repeat === 'semimonthly') {
     const o = (n) => n === -1 ? 'last day' : n + ([11, 12, 13].includes(n) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'));
-    return `on the ${joinNames(((p.weekly_days || {}).dates || []).map(o))} of every month`;
+    const r = p.weekly_days || {};
+    if (Array.isArray(r.weeks)) return `on the ${joinNames(r.weeks.map((n) => ({ 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', '-1': 'last' })[n]))} ${names[r.day]} of every month`;
+    return `on the ${joinNames((r.dates || []).map(o))} of every month`;
   }
   if (p.repeat === 'bimonthly') {
     const n = new Date(p.start_date + 'T12:00:00Z').getUTCDate();

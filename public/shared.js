@@ -45,7 +45,14 @@ export function occursOn(ev, iso) {
     case 'monthly': return d.getUTCDate() === s.getUTCDate();
     case 'semimonthly': {
       // twice a month on set dates, e.g. {"dates":[1,15]}; -1 = last day; 31st in a short month = its last day
+      // or on weekdays, e.g. {"weeks":[1,3],"day":2} = 1st and 3rd Tuesday
       const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+      const wr = semiWeeks(ev);
+      if (wr) {
+        if (d.getUTCDay() !== wr.day) return false;
+        const dt = d.getUTCDate();
+        return wr.weeks.some((n) => (n === -1 ? dt + 7 > last : Math.ceil(dt / 7) === n));
+      }
       return semiDates(ev).some((x) => (x === -1 ? last : Math.min(x, last)) === d.getUTCDate());
     }
     case 'bimonthly': {
@@ -65,6 +72,11 @@ export function occursOn(ev, iso) {
   }
 }
 
+export function semiWeeks(ev) {
+  let r = ev.weekly_days;
+  try { if (typeof r === 'string') r = JSON.parse(r); } catch { r = null; }
+  return r && Array.isArray(r.weeks) && r.weeks.length && r.day != null ? { weeks: r.weeks.map(Number), day: +r.day } : null;
+}
 export function semiDates(ev) {
   let r = ev.weekly_days;
   try { if (typeof r === 'string') r = JSON.parse(r); } catch { r = null; }
